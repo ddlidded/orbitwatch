@@ -135,7 +135,19 @@ def handle_agent_heartbeat(
 def handle_sequence_started(
     db: Session, agent: models.InstrumentAgent, payload: dict[str, Any]
 ) -> models.Sequence:
-    seq = sequence_service.create_sequence(db, agent.instrument_id, payload)
+    existing = (
+        db.query(models.Sequence)
+        .filter_by(
+            instrument_id=agent.instrument_id,
+            external_sequence_id=payload.get('external_sequence_id'),
+        )
+        .first()
+    )
+    if existing:
+        seq = existing
+        seq.status = 'running'
+    else:
+        seq = sequence_service.create_sequence(db, agent.instrument_id, payload)
     db.commit()
     # Prime samples with current target list for this instrument/method.
     for sample in seq.samples:
@@ -195,17 +207,88 @@ def _find_sample(
     )
 
 
+def _get_or_create_sequence(
+    db: Session,
+    agent: models.InstrumentAgent,
+    external_sequence_id: Optional[str],
+    sequence_name: Optional[str] = None,
+    source_path: Optional[str] = None,
+) -> models.Sequence:
+    from uuid import UUID
+
+    if external_sequence_id:
+        seq = (
+            db.query(models.Sequence)
+            .filter(
+                models.Sequence.instrument_id == UUID(str(agent.instrument_id)),
+                models.Sequence.external_sequence_id == external_sequence_id,
+            )
+            .first()
+        )
+        if seq:
+            return seq
+    seq = models.Sequence(
+        instrument_id=UUID(str(agent.instrument_id)),
+        external_sequence_id=external_sequence_id or f"SEQ-{uuid.uuid4().hex[:8]}",
+        name=sequence_name or external_sequence_id or "Active Sequence",
+        source_path=source_path,
+        started_at=_now(),
+        status="running",
+        sample_count=0,
+        source_snapshot={},
+    )
+    db.add(seq)
+    db.flush()
+    return seq
+
+
+def _get_or_create_sample(
+    db: Session,
+    sequence: models.Sequence,
+    external_sample_id: str,
+    payload: dict[str, Any],
+) -> models.Sample:
+    sample = (
+        db.query(models.Sample)
+        .filter_by(
+            sequence_id=sequence.id,
+            external_sample_id=external_sample_id,
+        )
+        .first()
+    )
+    if sample:
+        return sample
+    sample = models.Sample(
+        sequence_id=sequence.id,
+        external_sample_id=external_sample_id,
+        position=payload.get("position") or sequence.sample_count + 1,
+        sample_name=payload.get("sample_name") or external_sample_id,
+        sample_type=payload.get("sample_type") or "unknown",
+        method_name=payload.get("method_name"),
+        polarity=payload.get("polarity") or "positive",
+        vial_position=payload.get("vial_position"),
+        raw_file_name=payload.get("raw_file_name"),
+        expected_runtime_seconds=payload.get("expected_runtime_seconds"),
+        started_at=_now(),
+        acquisition_status="running",
+    )
+    db.add(sample)
+    sequence.sample_count += 1
+    db.flush()
+    return sample
+
+
 def handle_sample_started(
     db: Session, agent: models.InstrumentAgent, payload: dict[str, Any]
 ) -> Optional[models.Sample]:
-    sample = _find_sample(
+    seq = _get_or_create_sequence(
         db,
-        str(agent.instrument_id),
-        payload['external_sequence_id'],
-        payload['external_sample_id'],
+        agent,
+        payload.get('external_sequence_id'),
+        payload.get('sequence_name'),
+        payload.get('source_path'),
     )
-    if not sample:
-        return None
+    sample = _get_or_create_sample(db, seq, payload['external_sample_id'], payload)
     sample.started_at = _parse_iso(payload.get('started_at')) or _now()
     sample.acquisition_status = 'running'
     db.commit()
@@ -216,14 +299,17 @@ def handle_sample_started(
 def handle_scan(
     db: Session, agent: models.InstrumentAgent, envelope: dict[str, Any], payload: dict[str, Any]
 ) -> Optional[models.Scan]:
-    sample = _find_sample(
+    seq = _get_or_create_sequence(db, agent, payload.get('external_sequence_id'))
+    sample = _get_or_create_sample(
         db,
-        str(agent.instrument_id),
-        payload['external_sequence_id'],
+        seq,
         payload['external_sample_id'],
+        {
+            'sample_name': payload.get('external_sample_id'),
+            'sample_type': 'unknown',
+            'polarity': payload.get('polarity'),
+        },
     )
-    if not sample:
-        return None
 
     scan_number = payload['scan_number']
     agent_scan_id = str(envelope['messageId'])
@@ -470,14 +556,16 @@ def handle_telemetry_batch(
 def handle_sample_completed(
     db: Session, agent: models.InstrumentAgent, payload: dict[str, Any]
 ) -> Optional[models.Sample]:
-    sample = _find_sample(
+    seq = _get_or_create_sequence(db, agent, payload.get('external_sequence_id'))
+    sample = _get_or_create_sample(
         db,
-        str(agent.instrument_id),
-        payload['external_sequence_id'],
+        seq,
         payload['external_sample_id'],
+        {
+            'sample_name': payload.get('external_sample_id'),
+            'sample_type': 'unknown',
+        },
     )
-    if not sample:
-        return None
     sample.acquisition_status = 'completed'
     sample.completed_at = _parse_iso(payload.get('completed_at')) or _now()
     sample.finalization_status = 'finalizing'
@@ -490,14 +578,16 @@ def handle_sample_completed(
 def handle_sample_failed(
     db: Session, agent: models.InstrumentAgent, payload: dict[str, Any]
 ) -> Optional[models.Sample]:
-    sample = _find_sample(
+    seq = _get_or_create_sequence(db, agent, payload.get('external_sequence_id'))
+    sample = _get_or_create_sample(
         db,
-        str(agent.instrument_id),
-        payload['external_sequence_id'],
+        seq,
         payload['external_sample_id'],
+        {
+            'sample_name': payload.get('external_sample_id'),
+            'sample_type': 'unknown',
+        },
     )
-    if not sample:
-        return None
     sample.acquisition_status = 'failed'
     sample.error_message = payload.get('error_message')
     sample.completed_at = _parse_iso(payload.get('completed_at')) or _now()
@@ -517,16 +607,13 @@ def handle_sample_failed(
 def handle_sequence_completed(
     db: Session, agent: models.InstrumentAgent, payload: dict[str, Any]
 ) -> Optional[models.Sequence]:
-    seq = (
-        db.query(models.Sequence)
-        .filter_by(
-            instrument_id=agent.instrument_id,
-            external_sequence_id=payload['external_sequence_id'],
-        )
-        .first()
+    seq = _get_or_create_sequence(
+        db,
+        agent,
+        payload.get('external_sequence_id'),
+        payload.get('sequence_name'),
+        payload.get('source_path'),
     )
-    if not seq:
-        return None
     seq.status = 'completed'
     seq.completed_at = _parse_iso(payload.get('completed_at')) or _now()
     db.commit()
@@ -537,14 +624,16 @@ def handle_sequence_completed(
 def handle_rawfile_available(
     db: Session, agent: models.InstrumentAgent, payload: dict[str, Any]
 ) -> Optional[models.Sample]:
-    sample = _find_sample(
+    seq = _get_or_create_sequence(db, agent, payload.get('external_sequence_id'))
+    sample = _get_or_create_sample(
         db,
-        str(agent.instrument_id),
-        payload['external_sequence_id'],
+        seq,
         payload['external_sample_id'],
+        {
+            'sample_name': payload.get('external_sample_id'),
+            'sample_type': 'unknown',
+        },
     )
-    if not sample:
-        return None
     sample.raw_file_name = payload.get('raw_file_name')
     db.commit()
     sequence_service.broadcast_sample_update(sample)

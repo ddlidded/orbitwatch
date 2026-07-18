@@ -13,6 +13,7 @@ import EventsAlerts from './pages/EventsAlerts';
 import Reports from './pages/Reports';
 import ExportData from './pages/ExportData';
 import Settings from './pages/Settings';
+import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path='reports' element={<Reports />} />
         <Route path='export' element={<ExportData />} />
         <Route path='settings' element={<Settings />} />
+        <Route path='profile' element={<Profile />} />
         <Route path='unauthorized' element={<div className='p-10'>Unauthorized</div>} />
       </Route>
       <Route path='*' element={<NotFound />} />

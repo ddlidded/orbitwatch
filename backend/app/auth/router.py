@@ -122,6 +122,58 @@ def me(user: models.User = Depends(get_current_active_user)):
     return user
 
 
+@router.patch('/me', response_model=schemas.UserOut)
+def update_profile(
+    request: Request,
+    data: schemas.UserProfileUpdate,
+    user: models.User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    if data.full_name is not None:
+        user.full_name = data.full_name
+    if data.email is not None:
+        existing = db.query(models.User).filter_by(email=data.email.lower()).first()
+        if existing and existing.id != user.id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Email already in use')
+        user.email = data.email.lower()
+    db.commit()
+    audit.log_event(
+        db,
+        'profile_updated',
+        'user',
+        resource_id=str(user.id),
+        actor_user_id=str(user.id),
+        request=request,
+    )
+    return user
+
+
+@router.post('/change-password')
+def change_password(
+    request: Request,
+    data: schemas.PasswordChange,
+    user: models.User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    if not user.hashed_password or not verify_password(data.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Current password is incorrect')
+    user.hashed_password = hash_password(data.new_password)
+    user.failed_login_count = 0
+    user.locked_until = None
+    # Revoke existing sessions for the user to force re-authentication.
+    db.query(models.UserSession).filter_by(user_id=user.id, revoked=False).update({'revoked': True})
+    db.commit()
+    audit.log_event(
+        db,
+        'password_changed',
+        'user',
+        resource_id=str(user.id),
+        actor_user_id=str(user.id),
+        request=request,
+    )
+    return {'message': 'Password updated. Please log in again.'}
+
+
 @router.post('/forgot-password')
 def forgot_password(
     request: Request,

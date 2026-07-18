@@ -11,6 +11,7 @@ using Thermo.Interfaces.ExplorisAccess_V1;
 using Thermo.Interfaces.ExplorisAccess_V1.Control.Acquisition;
 using Thermo.Interfaces.ExplorisAccess_V1.MsScanContainer;
 using Thermo.Interfaces.InstrumentAccess_V1;
+using Thermo.Interfaces.InstrumentAccess_V1.Control.Acquisition;
 using Thermo.Interfaces.InstrumentAccess_V1.MsScanContainer;
 using Thermo.Interfaces.SpectrumFormat_V1;
 
@@ -28,10 +29,20 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
     private readonly List<IDisposable> _subscriptions = new();
     private bool _disposed;
 
+    // Current acquisition context. Updated when an acquisition stream opens so scans are
+    // attributed to the correct Xcalibur sequence/sample as the run progresses.
+    private string _currentSequenceId = "";
+    private string _currentSequenceName = "";
+    private string _currentSampleId = "";
+    private string _currentSampleName = "";
+    private string _currentSamplePolarity = "positive";
+
     public HeliosInstrumentDataSource(ILogger<HeliosInstrumentDataSource> logger, IConfiguration config)
     {
         _logger = logger;
         _config = config;
+        _currentSequenceId = config.GetValue<string>("Agent:Sequence:ExternalId") ?? "SEQ-HELIOS-001";
+        _currentSampleId = config.GetValue<string>("Agent:Sample:ExternalId") ?? "SMP-001";
     }
 
     public Task<InstrumentIdentity> GetInstrumentIdentityAsync(CancellationToken cancellationToken = default)
@@ -42,7 +53,6 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
         if (_instrument is not null)
         {
             try { name = _instrument.InstrumentName; } catch (Exception ex) { _logger.LogWarning(ex, "Unable to read instrument name"); }
-            // Serial number is not exposed directly by IAPI; it must be configured or read from Tune via registry.
         }
 
         return Task.FromResult(new InstrumentIdentity(
@@ -58,12 +68,33 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
     public async Task<SequenceSnapshot> GetSequenceSnapshotAsync(CancellationToken cancellationToken = default)
     {
         EnsureConnected();
+
+        // Prefer the Xcalibur sequence file referenced by the active acquisition state.
+        var fileSnapshot = ReadXcaliburSequenceFromState();
+        if (fileSnapshot is not null)
+        {
+            _logger.LogInformation(
+                "Loaded Xcalibur sequence \"{SequenceName}\" with {SampleCount} samples from sequence file.",
+                fileSnapshot.SequenceName,
+                fileSnapshot.Samples.Count);
+            _currentSequenceId = fileSnapshot.ExternalSequenceId;
+            _currentSequenceName = fileSnapshot.SequenceName;
+            if (fileSnapshot.Samples.Count > 0)
+            {
+                _currentSampleId = fileSnapshot.Samples[0].ExternalSampleId;
+                _currentSampleName = fileSnapshot.Samples[0].SampleName;
+            }
+            return fileSnapshot;
+        }
+
+        // Fallback: wait for the next acquisition stream opening event (one sample).
         var tcs = new TaskCompletionSource<SequenceSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         EventHandler<ExplorisAcquisitionOpeningEventArgs>? handler = null;
         handler = (sender, e) =>
         {
             var snapshot = ParseAcquisitionOpening(e.StartingInformation);
+            ApplyAcquisitionContext(e.StartingInformation);
             tcs.TrySetResult(snapshot);
         };
 
@@ -71,8 +102,6 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
         {
             _instrument!.Control.Acquisition.AcquisitionStreamOpening += handler;
             using var registration = cancellationToken.Register(() => tcs.TrySetCanceled());
-
-            // If acquisition is already open and StartingInformation is not available, fall back to configured defaults.
             return await tcs.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
         }
         catch (TimeoutException)
@@ -87,16 +116,44 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
         }
     }
 
-    public async IAsyncEnumerable<ScanEvent> StreamScansAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<ScanEvent> StreamScansAsync(string? externalSampleId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         EnsureConnected();
         var channel = Channel.CreateUnbounded<ScanEvent>();
 
-        EventHandler<ExplorisMsScanEventArgs>? handler = null;
-        handler = (sender, e) =>
+        var targetSampleId = externalSampleId ?? _currentSampleId;
+        var streaming = false;
+
+        EventHandler<ExplorisAcquisitionOpeningEventArgs>? openingHandler = null;
+        EventHandler? closingHandler = null;
+        EventHandler<ExplorisMsScanEventArgs>? scanHandler = null;
+
+        openingHandler = (sender, e) =>
+        {
+            ApplyAcquisitionContext(e.StartingInformation);
+            if (string.IsNullOrWhiteSpace(targetSampleId) || _currentSampleId == targetSampleId)
+            {
+                streaming = true;
+            }
+            else if (streaming)
+            {
+                // A new sample has started; stop streaming the current target.
+                streaming = false;
+                channel.Writer.TryComplete();
+            }
+        };
+
+        closingHandler = (sender, e) =>
+        {
+            streaming = false;
+            channel.Writer.TryComplete();
+        };
+
+        scanHandler = (sender, e) =>
         {
             try
             {
+                if (!streaming) return;
                 if (e.GetScan() is not IMsScan scan) return;
                 using (scan)
                 {
@@ -121,8 +178,26 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
             yield break;
         }
 
-        _scanContainer.MsScanArrived += handler;
-        _subscriptions.Add(new ActionDisposable(() => _scanContainer!.MsScanArrived -= handler));
+        // If an acquisition is already open for the target, start streaming immediately.
+        var current = TryReadCurrentSampleFromState();
+        if (current is not null && (string.IsNullOrWhiteSpace(targetSampleId) || current.ExternalSampleId == targetSampleId))
+        {
+            _currentSequenceId = current.ExternalSampleId;
+            _currentSampleId = current.ExternalSampleId;
+            _currentSampleName = current.SampleName;
+            if (!string.IsNullOrWhiteSpace(current.Polarity)) _currentSamplePolarity = current.Polarity;
+            streaming = true;
+        }
+
+        _instrument.Control.Acquisition.AcquisitionStreamOpening += openingHandler;
+        _instrument.Control.Acquisition.AcquisitionStreamClosing += closingHandler;
+        _scanContainer.MsScanArrived += scanHandler;
+        _subscriptions.Add(new ActionDisposable(() =>
+        {
+            _instrument.Control.Acquisition.AcquisitionStreamOpening -= openingHandler;
+            _instrument.Control.Acquisition.AcquisitionStreamClosing -= closingHandler;
+            _scanContainer!.MsScanArrived -= scanHandler;
+        }));
 
         await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
         {
@@ -198,6 +273,189 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
             ?? throw new InvalidOperationException($"Unable to create {classname}.");
     }
 
+    private SequenceSnapshot? ReadXcaliburSequenceFromState()
+    {
+        try
+        {
+            var state = _instrument?.Control?.Acquisition?.State;
+            if (state is null) return null;
+
+            var sequenceFileName = GetProperty<string>(state, "SequenceFileName");
+            var sequenceFileIndex = GetProperty<int?>(state, "SequenceFileIndex");
+            var methodName = GetProperty<string>(state, "MethodName");
+
+            if (string.IsNullOrWhiteSpace(sequenceFileName) || !File.Exists(sequenceFileName))
+                return null;
+
+            var samples = ParseTextSequenceFile(sequenceFileName);
+            if (samples is null || samples.Count == 0)
+            {
+                // The file may be a binary SLD that we cannot parse; at least surface the active row.
+                var activeId = sequenceFileIndex.HasValue ? $"SMP-{sequenceFileIndex.Value:0000}" : "SMP-0001";
+                samples = new List<SampleInfo>
+                {
+                    new(activeId, sequenceFileIndex ?? 1, activeId, "Unknown", methodName, "positive", null, null, null)
+                };
+            }
+
+            var sequenceName = Path.GetFileNameWithoutExtension(sequenceFileName);
+            var externalId = _config.GetValue<string>("Agent:Sequence:ExternalId") ?? sequenceName;
+
+            return new SequenceSnapshot(externalId, sequenceName, samples);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read Xcalibur sequence from instrument state.");
+            return null;
+        }
+    }
+
+    private SampleInfo? TryReadCurrentSampleFromState()
+    {
+        try
+        {
+            var state = _instrument?.Control?.Acquisition?.State;
+            if (state is null) return null;
+
+            var sequenceFileName = GetProperty<string>(state, "SequenceFileName");
+            var sequenceFileIndex = GetProperty<int?>(state, "SequenceFileIndex");
+            if (string.IsNullOrWhiteSpace(sequenceFileName) || !sequenceFileIndex.HasValue)
+                return null;
+
+            var samples = ParseTextSequenceFile(sequenceFileName);
+            if (samples is null || samples.Count == 0)
+            {
+                var activeId = $"SMP-{sequenceFileIndex.Value:0000}";
+                return new SampleInfo(activeId, sequenceFileIndex.Value, activeId, "Unknown", null, "positive", null, null, null);
+            }
+
+            var idx = Math.Max(0, Math.Min(sequenceFileIndex.Value - 1, samples.Count - 1));
+            return samples[idx];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read current sample from instrument state.");
+            return null;
+        }
+    }
+
+    private List<SampleInfo>? ParseTextSequenceFile(string path)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            // Reject obvious binary files.
+            if (bytes.Length > 0 && bytes.Any(b => b == 0))
+                return null;
+
+            var text = File.ReadAllText(path);
+            var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+
+            if (lines.Count < 2)
+                return null;
+
+            // Try to detect a header line with known Xcalibur sequence columns.
+            var headerLine = lines[0];
+            var delimiter = new[] { '\t' };
+            if (!headerLine.Contains('\t'))
+            {
+                if (headerLine.Contains(',')) delimiter = new[] { ',' };
+                else if (headerLine.Contains(';')) delimiter = new[] { ';' };
+            }
+
+            var headers = headerLine.Split(delimiter, StringSplitOptions.None)
+                .Select((h, i) => new { Index = i, Name = h.Trim() })
+                .ToList();
+
+            var knownHeader = headers.Any(h =>
+                h.Name.Contains("Sample", StringComparison.OrdinalIgnoreCase) ||
+                h.Name.Contains("File", StringComparison.OrdinalIgnoreCase) ||
+                h.Name.Contains("Method", StringComparison.OrdinalIgnoreCase));
+
+            if (!knownHeader)
+                return null;
+
+            int ColIndex(params string[] candidates)
+            {
+                foreach (var candidate in candidates)
+                {
+                    var norm = candidate.Replace(" ", "").ToLowerInvariant();
+                    var hit = headers.FirstOrDefault(h =>
+                        h.Name.Replace(" ", "").Equals(norm, StringComparison.OrdinalIgnoreCase) ||
+                        h.Name.Equals(candidate, StringComparison.OrdinalIgnoreCase));
+                    if (hit != null) return hit.Index;
+                }
+                return -1;
+            }
+
+            var sampleNameIdx = ColIndex("Sample Name", "SampleName", "Sample ID", "SampleID", "Sample");
+            var positionIdx = ColIndex("Position", "PositionNo", "Position No");
+            var typeIdx = ColIndex("Sample Type", "SampleType", "Type");
+            var methodIdx = ColIndex("Inst Method", "InstrumentMethod", "Instrument Method", "Method", "MethodName");
+            var polarityIdx = ColIndex("Polarity", "Ion Mode", "IonMode");
+            var vialIdx = ColIndex("Vial", "VialPosition", "Vial Position");
+            var fileIdx = ColIndex("File Name", "Filename", "Raw File", "RawFileName");
+            var runtimeIdx = ColIndex("Runtime", "Run Time", "RunTime");
+
+            if (sampleNameIdx < 0)
+                return null;
+
+            var samples = new List<SampleInfo>();
+            for (var i = 1; i < lines.Count; i++)
+            {
+                var cols = lines[i].Split(delimiter, StringSplitOptions.None)
+                    .Select(c => c.Trim())
+                    .ToArray();
+                if (cols.Length <= sampleNameIdx) continue;
+
+                var sampleName = cols[sampleNameIdx];
+                if (string.IsNullOrWhiteSpace(sampleName)) continue;
+
+                var position = positionIdx >= 0 && cols.Length > positionIdx && int.TryParse(cols[positionIdx], out var p) ? p : samples.Count + 1;
+                var sampleType = typeIdx >= 0 && cols.Length > typeIdx ? cols[typeIdx] : "Unknown";
+                var methodName = methodIdx >= 0 && cols.Length > methodIdx ? cols[methodIdx] : null;
+                var polarity = polarityIdx >= 0 && cols.Length > polarityIdx ? cols[polarityIdx] : "positive";
+                var vial = vialIdx >= 0 && cols.Length > vialIdx ? cols[vialIdx] : null;
+                var rawFile = fileIdx >= 0 && cols.Length > fileIdx ? cols[fileIdx] : null;
+                int? runtime = runtimeIdx >= 0 && cols.Length > runtimeIdx && int.TryParse(cols[runtimeIdx], out var r) ? r : null;
+
+                samples.Add(new SampleInfo(
+                    sampleName,
+                    position,
+                    sampleName,
+                    sampleType,
+                    methodName,
+                    string.IsNullOrWhiteSpace(polarity) ? "positive" : polarity.ToLowerInvariant(),
+                    vial,
+                    rawFile,
+                    runtime));
+            }
+
+            return samples.Count > 0 ? samples : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse sequence file {Path}.", path);
+            return null;
+        }
+    }
+
+    private void ApplyAcquisitionContext(IDictionary<string, string> info)
+    {
+        var snapshot = ParseAcquisitionOpening(info);
+        _currentSequenceId = snapshot.ExternalSequenceId;
+        _currentSequenceName = snapshot.SequenceName;
+        if (snapshot.Samples.Count > 0)
+        {
+            var s = snapshot.Samples[0];
+            _currentSampleId = s.ExternalSampleId;
+            _currentSampleName = s.SampleName;
+            _currentSamplePolarity = string.IsNullOrWhiteSpace(s.Polarity) ? "positive" : s.Polarity;
+        }
+    }
+
     private SequenceSnapshot ParseAcquisitionOpening(IDictionary<string, string> info)
     {
         info.TryGetValue("Sequence", out var sequence);
@@ -242,10 +500,10 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
 
         var header = scan.Header;
         var scanNumber = GetHeaderInt(header, "ScanNumber", "scanNumber", "Scan");
-        var rt = GetHeaderDouble(header, "StartTime", "startTime", "RetentionTime") / 60.0; // IAPI StartTime is usually seconds
+        var rt = GetHeaderDouble(header, "StartTime", "startTime", "RetentionTime") / 60.0;
         if (double.IsNaN(rt) || rt <= 0) rt = 0;
         var msOrder = GetHeaderInt(header, "MsOrder", "MSOrder", "msOrder");
-        var polarity = NormalizePolarity(GetHeaderString(header, "Polarity", "polarity", "IonMode"));
+        var polarity = NormalizePolarity(GetHeaderString(header, "Polarity", "polarity", "IonMode") ?? _currentSamplePolarity);
         var scanType = GetHeaderString(header, "ScanType", "scanType", "Filter") ?? "Full";
         var tic = GetHeaderDouble(header, "TIC", "TotalIonCurrent", "totalIonCurrent");
         var basePeakMz = GetHeaderDouble(header, "BasePeakMz", "BasePeakMass", "basePeakMz");
@@ -267,13 +525,10 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
             return null;
         }
 
-        var sequence = _config.GetValue<string>("Agent:Sequence:ExternalId") ?? "SEQ-HELIOS-001";
-        var sample = _config.GetValue<string>("Agent:Sample:ExternalId") ?? "SMP-001";
-
         return new ScanEvent(
             Guid.NewGuid(),
-            sequence,
-            sample,
+            _currentSequenceId,
+            _currentSampleId,
             scanNumber,
             Math.Round(rt, 3),
             msOrder,
@@ -325,6 +580,23 @@ public sealed class HeliosInstrumentDataSource : IInstrumentDataSource, IDisposa
             var s when s.Contains("detector") && s.Contains("count") => "DetectorCounts",
             _ => $"{source}.{key}"
         };
+    }
+
+    private static T? GetProperty<T>(object? target, string name)
+    {
+        if (target is null) return default;
+        try
+        {
+            var prop = target.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            if (prop is null) return default;
+            var value = prop.GetValue(target);
+            if (value is null) return default;
+            return (T?)Convert.ChangeType(value, typeof(T));
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     private static int GetHeaderInt(IDictionary<string, string> header, params string[] keys)

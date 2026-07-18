@@ -81,7 +81,7 @@ public sealed class Worker : BackgroundService
                 ["started_at"] = DateTime.UtcNow.ToString("O")
             }, stoppingToken);
 
-            await foreach (var scan in _instrument.StreamScansAsync(stoppingToken).WithCancellation(stoppingToken))
+            await foreach (var scan in _instrument.StreamScansAsync(sample.ExternalSampleId, stoppingToken).WithCancellation(stoppingToken))
             {
                 await EnqueueAsync("scan", new Dictionary<string, object?>
                 {

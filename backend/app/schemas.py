@@ -28,6 +28,16 @@ class UserUpdate(BaseModel):
     role_names: Optional[list[str]] = None
 
 
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=1)
+    email: Optional[EmailStr] = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=12)
+    new_password: str = Field(..., min_length=12)
+
+
 class UserOut(UserBase):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

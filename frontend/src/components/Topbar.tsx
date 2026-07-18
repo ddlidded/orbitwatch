@@ -64,10 +64,10 @@ export default function Topbar() {
                 <div className='text-[9px] text-[#65a8ff] mt-0.5 capitalize'>{user?.roles?.join(', ') || 'User'}</div>
               </div>
               <button
-                onClick={() => { setOpen(false); navigate('/settings'); }}
+                onClick={() => { setOpen(false); navigate('/profile'); }}
                 className='w-full flex items-center gap-2 px-3 py-2 text-[11px] text-orbit-text hover:bg-orbit-soft'
               >
-                <User size={14} /> Settings
+                <User size={14} /> Profile
               </button>
               <button
                 onClick={handleLogout}

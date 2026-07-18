@@ -59,10 +59,10 @@ public sealed class ReplayInstrumentDataSource : IInstrumentDataSource
     public Task<SequenceSnapshot> GetSequenceSnapshotAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(_sequences.FirstOrDefault() ?? GenerateDefaultSequence());
 
-    public async IAsyncEnumerable<ScanEvent> StreamScansAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<ScanEvent> StreamScansAsync(string? externalSampleId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var sequence = _sequences.FirstOrDefault() ?? GenerateDefaultSequence();
-        var sample = sequence.Samples.First();
+        var sample = sequence.Samples.FirstOrDefault(s => s.ExternalSampleId == externalSampleId) ?? sequence.Samples.First();
         var rng = new Random(42);
         var compounds = new Dictionary<string, (double Mz, double Rt, double Intensity, double SigmaRt)>
         {

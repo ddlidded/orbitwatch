@@ -4,7 +4,7 @@ public interface IInstrumentDataSource
 {
     Task<InstrumentIdentity> GetInstrumentIdentityAsync(CancellationToken cancellationToken = default);
     Task<SequenceSnapshot> GetSequenceSnapshotAsync(CancellationToken cancellationToken = default);
-    IAsyncEnumerable<ScanEvent> StreamScansAsync(CancellationToken cancellationToken = default);
+    IAsyncEnumerable<ScanEvent> StreamScansAsync(string? externalSampleId = null, CancellationToken cancellationToken = default);
     IAsyncEnumerable<TelemetryEvent> StreamTelemetryAsync(CancellationToken cancellationToken = default);
 }
 
