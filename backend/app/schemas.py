@@ -272,13 +272,22 @@ class ReportOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     report_type: str
-    sample_id: Optional[uuid.UUID] = None
-    sequence_id: Optional[uuid.UUID] = None
     status: str
     file_key: Optional[str] = None
     requested_by_user_id: uuid.UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
+    parameters: dict = Field(default_factory=dict, exclude=True)
+
+    @computed_field
+    @property
+    def sample_id(self) -> Optional[uuid.UUID]:
+        return _uuid_from_params(self.parameters, 'sample_id')
+
+    @computed_field
+    @property
+    def sequence_id(self) -> Optional[uuid.UUID]:
+        return _uuid_from_params(self.parameters, 'sequence_id')
 
 
 class ExportJobOut(BaseModel):
@@ -363,3 +372,15 @@ class PaginatedResponse(BaseModel):
     page: int
     page_size: int
     items: list[Any]
+
+
+def _uuid_from_params(params: dict, key: str) -> Optional[uuid.UUID]:
+    value = params.get(key) if params else None
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
