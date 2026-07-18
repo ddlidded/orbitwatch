@@ -123,7 +123,10 @@ class SampleOut(BaseModel):
             return 100
         if not self.started_at or not self.expected_runtime_seconds:
             return 0
-        elapsed = (datetime.now(timezone.utc) - self.started_at).total_seconds()
+        started = self.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
         return min(100, max(0, int(elapsed / self.expected_runtime_seconds * 100)))
 
 

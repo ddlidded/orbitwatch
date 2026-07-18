@@ -108,7 +108,10 @@ def _sample_progress(sample: models.Sample) -> int:
     if not sample.started_at or not sample.expected_runtime_seconds:
         return 0
     from datetime import datetime, timezone
-    elapsed = (datetime.now(timezone.utc) - sample.started_at).total_seconds()
+    started = sample.started_at
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     return min(100, max(0, int(elapsed / sample.expected_runtime_seconds * 100)))
 
 
