@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+dist-ssr/
+*.local
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+publish/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Secrets
+.env
+*.env
+secret_to_upload_*
+
+# Database/data
+pgdata/
+redisdata/
+miniodata/
+*.db
+*.db-shm
+*.db-wal
+backend/data/
+agent/vendor/
+agent/OrbitWatchAgent/logs/
+
+# OS
+.DS_Store
+Thumbs.db

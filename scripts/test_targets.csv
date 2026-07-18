@@ -1,0 +1,6 @@
+compound_name,formula,adduct,polarity,expected_rt_minutes,rt_window_minutes,tolerance_value,tolerance_unit,target_mz
+SAM,C15H23N6O5S,[M+H]+,positive,6.42,0.5,5,ppm,399.1448
+SAH,C14H21N6O5S,[M+H]+,positive,5.88,0.5,5,ppm,385.1292
+Betaine,C5H11NO2,[M+H]+,positive,4.80,0.5,5,ppm,118.0864
+Citrate,C6H8O7,[M-H]-,negative,7.19,0.5,5,ppm,191.0191
+Adenosine,C10H13N5O4,[M+H]+,positive,4.55,0.5,5,ppm,268.1030
