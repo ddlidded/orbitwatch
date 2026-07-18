@@ -24,6 +24,8 @@ export default function EventsAlerts() {
 
   useEffect(() => {
     fetch();
+    const interval = setInterval(fetch, 10000);
+    return () => clearInterval(interval);
   }, [instrumentId, severity, status]);
 
   const acknowledge = async (id: string) => {

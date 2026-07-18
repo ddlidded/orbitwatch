@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
+from app.realtime.manager import manager as realtime_manager
 
 
 def create_alert(
@@ -52,6 +53,32 @@ def create_alert(
     )
     db.add(alert)
     db.commit()
+
+    try:
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        loop.create_task(
+            realtime_manager.broadcast(
+                f'alerts:{instrument_id}',
+                {
+                    'type': 'alert.created',
+                    'alert': {
+                        'id': str(alert.id),
+                        'instrument_id': instrument_id,
+                        'category': category,
+                        'severity': severity,
+                        'message': message,
+                        'status': 'open',
+                        'first_seen_at': alert.first_seen_at.isoformat(),
+                        'last_seen_at': alert.last_seen_at.isoformat(),
+                    },
+                },
+            )
+        )
+    except Exception:
+        pass
+
     return alert
 
 

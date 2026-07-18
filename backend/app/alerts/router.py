@@ -14,6 +14,30 @@ from app.services import alert_service
 router = APIRouter(prefix='/alerts', tags=['alerts'])
 
 
+@router.get('/notifications', response_model=schemas.NotificationOut)
+def list_notifications(
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_permission('alert:read')),
+):
+    total, items = alert_service.list_alerts(db, status='open', limit=limit)
+    return {
+        'count': total,
+        'items': [schemas.AlertOut.model_validate(a) for a in items],
+    }
+
+
+@router.post('/notifications/{alert_id}/acknowledge', response_model=schemas.AlertOut)
+def acknowledge_notification(
+    alert_id: str,
+    data: schemas.AlertAcknowledge,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_permission('alert:ack')),
+):
+    alert = alert_service.acknowledge_alert(db, alert_id, str(user.id), data.notes)
+    return alert
+
+
 @router.get('', response_model=schemas.PaginatedResponse)
 def list_alerts(
     instrument_id: str | None = None,

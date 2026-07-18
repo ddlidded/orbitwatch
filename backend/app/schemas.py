@@ -233,6 +233,11 @@ class AlertAcknowledge(BaseModel):
     notes: Optional[str] = None
 
 
+class NotificationOut(BaseModel):
+    count: int
+    items: list[AlertOut]
+
+
 class SampleTargetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

@@ -144,8 +144,15 @@ async def websocket_endpoint(websocket: WebSocket):
         return
 
     roles = {r for r in user.roles}
-    # Instrument scope: for demo, all instruments. Later filter by UserInstrument.
-    instruments = set()
+    # For demo, allow all instrument channels. Later filter by UserInstrument.
+    def _all_instrument_ids():
+        db = SessionLocal()
+        try:
+            return {str(i.id) for i in db.query(models.Instrument.id).all()}
+        finally:
+            db.close()
+
+    instruments = await asyncio.to_thread(_all_instrument_ids)
     conn_id = await realtime_manager.connect(websocket, str(user.id), roles, instruments)
     try:
         while True:
