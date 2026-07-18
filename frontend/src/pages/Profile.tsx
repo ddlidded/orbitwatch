@@ -83,6 +83,7 @@ export default function Profile() {
             <input
               value={profile.full_name || ''}
               onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+              placeholder='Full name'
               className='w-full h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
             />
           </div>
@@ -92,6 +93,7 @@ export default function Profile() {
               type='email'
               value={profile.email || ''}
               onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+              placeholder='email@isotopiq.dev'
               className='w-full h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
             />
           </div>
@@ -110,6 +112,7 @@ export default function Profile() {
               type='password'
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder='Current password'
               className='w-full h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
             />
           </div>
@@ -120,6 +123,7 @@ export default function Profile() {
               type='password'
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
+              placeholder='New password (min 12 chars)'
               className='w-full h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
             />
           </div>
@@ -129,6 +133,7 @@ export default function Profile() {
               type='password'
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder='Confirm new password'
               className='w-full h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
             />
           </div>

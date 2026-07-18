@@ -1,5 +1,6 @@
-import { Activity, BarChart3, Clock, Home, Users, type LucideIcon } from 'lucide-react';
+import { Activity, BarChart3, Clock, Cpu, Home, Shield, Users, type LucideIcon } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import type { Instrument } from '../types';
 
 const icons: Record<string, LucideIcon> = {
@@ -8,6 +9,8 @@ const icons: Record<string, LucideIcon> = {
   user: Users,
   activity: Activity,
   clock: Clock,
+  shield: Shield,
+  cpu: Cpu,
 };
 
 interface SidebarProps {
@@ -15,6 +18,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ instrument }: SidebarProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.roles.includes('system_admin');
+  const isInstrumentManager = isAdmin || user?.roles.includes('instrument_admin');
   const nav = [
     { label: 'Dashboard', path: '/dashboard', icon: 'home' },
     { label: 'TIC Overview', path: '/tic', icon: 'bar-chart' },
@@ -62,6 +68,8 @@ export default function Sidebar({ instrument }: SidebarProps) {
           <NavLink to='/reports' className='nav-item-sub'>Reports</NavLink>
           <NavLink to='/export' className='nav-item-sub'>Export Data</NavLink>
           <NavLink to='/settings' className='nav-item-sub'>Settings</NavLink>
+          {isAdmin && <NavLink to='/admin/users' className='nav-item-sub'>User Management</NavLink>}
+          {isInstrumentManager && <NavLink to='/connect-instrument' className='nav-item-sub'>Connect Instrument</NavLink>}
         </div>
       </nav>
 

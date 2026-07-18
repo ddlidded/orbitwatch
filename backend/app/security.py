@@ -38,11 +38,15 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def set_auth_cookies(response, session_token: str, refresh_token: str) -> None:
+def set_auth_cookies(response, session_token: str, refresh_token: str, remember_me: bool = False) -> None:
     settings = get_settings()
     now = datetime.now(timezone.utc)
-    access_exp = now + timedelta(minutes=settings.access_token_ttl_minutes)
-    refresh_exp = now + timedelta(days=settings.refresh_token_ttl_days)
+    if remember_me:
+        access_exp = now + timedelta(days=min(settings.max_session_lifetime_days, 30))
+        refresh_exp = now + timedelta(days=min(settings.max_session_lifetime_days, 90))
+    else:
+        access_exp = now + timedelta(minutes=settings.access_token_ttl_minutes)
+        refresh_exp = now + timedelta(days=settings.refresh_token_ttl_days)
     response.set_cookie(
         key='session',
         value=session_token,

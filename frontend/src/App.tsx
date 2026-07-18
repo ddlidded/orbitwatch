@@ -14,6 +14,8 @@ import Reports from './pages/Reports';
 import ExportData from './pages/ExportData';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
+import UserManagement from './pages/UserManagement';
+import InstrumentConnection from './pages/InstrumentConnection';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
@@ -44,6 +46,8 @@ function AppRoutes() {
         <Route path='export' element={<ExportData />} />
         <Route path='settings' element={<Settings />} />
         <Route path='profile' element={<Profile />} />
+        <Route path='admin/users' element={<ProtectedRoute roles={['system_admin']}><UserManagement /></ProtectedRoute>} />
+        <Route path='connect-instrument' element={<ProtectedRoute roles={['system_admin','instrument_admin']}><InstrumentConnection /></ProtectedRoute>} />
         <Route path='unauthorized' element={<div className='p-10'>Unauthorized</div>} />
       </Route>
       <Route path='*' element={<NotFound />} />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import api from '../api/client';
 import StatusBadge from '../components/StatusBadge';
 import type { Sample, Sequence } from '../types';
@@ -53,8 +53,8 @@ export default function SequenceQueuePage() {
           </thead>
           <tbody>
             {sequences.map((seq) => (
-              <>
-                <tr key={seq.id} className='border-b border-orbit-border/10 hover:bg-orbit-hover cursor-pointer' onClick={() => toggle(seq.id)}>
+              <Fragment key={seq.id}>
+                <tr className='border-b border-orbit-border/10 hover:bg-orbit-hover cursor-pointer' onClick={() => toggle(seq.id)}>
                   <td className='p-2'>{expanded.has(seq.id) ? '▼' : '▶'}</td>
                   <td className='p-2 font-semibold'>{seq.name}</td>
                   <td className='p-2'><StatusBadge status={seq.status} /></td>
@@ -99,7 +99,7 @@ export default function SequenceQueuePage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

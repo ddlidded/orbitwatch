@@ -5,7 +5,7 @@ import type { User } from '../types';
 
 export default function Settings() {
   const [users, setUsers] = useState<User[]>([]);
-  const [newUser, setNewUser] = useState({ email: '', full_name: '', password: '', role_names: 'operator' });
+  const [newUser, setNewUser] = useState({ email: '', full_name: '', password: '', role_names: 'viewer' });
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function Settings() {
           <input
             value={newUser.email}
             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-            placeholder='Email'
+            placeholder='email@isotopiq.dev'
             className='h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
           />
           <input
@@ -53,7 +53,7 @@ export default function Settings() {
             type='password'
             value={newUser.password}
             onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-            placeholder='Password'
+            placeholder='Password (min 12 chars)'
             className='h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
           />
           <select
@@ -61,8 +61,9 @@ export default function Settings() {
             onChange={(e) => setNewUser({ ...newUser, role_names: e.target.value })}
             className='h-[32px] px-2 rounded-md border border-orbit-border bg-orbit-soft text-orbit-text text-[11px] outline-none'
           >
-            <option value='operator'>Operator</option>
-            <option value='lab_manager'>Lab Manager</option>
+            <option value='viewer'>Viewer</option>
+            <option value='analyst'>Analyst</option>
+            <option value='instrument_admin'>Instrument Admin</option>
             <option value='system_admin'>System Admin</option>
           </select>
           <button

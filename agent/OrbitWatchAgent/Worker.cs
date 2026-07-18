@@ -36,25 +36,38 @@ public sealed class Worker : BackgroundService
         var agentVersion = "0.0.1";
 
         var registerPayload = new AgentRegisterPayload(hostname, agentVersion, identity.SerialNumber, identity.Name, identity.Model, identity.ApiVersion, identity.TuneVersion, identity.IapiVersion, capabilities);
-        var bootstrapToken = _config.GetValue<string>("Agent:BootstrapToken") ?? "";
+        var preconfiguredToken = _config.GetValue<string>("Agent:Token") ?? "";
 
-        AgentRegisterResponse? registration = null;
-        while (registration is null && !stoppingToken.IsCancellationRequested)
+        if (!string.IsNullOrWhiteSpace(preconfiguredToken) &&
+            Guid.TryParse(_config.GetValue<string>("Agent:AgentId"), out var preAgentId) &&
+            Guid.TryParse(_config.GetValue<string>("Agent:InstrumentId"), out var preInstrumentId))
         {
-            registration = await _sender.RegisterAsync(bootstrapToken, registerPayload, stoppingToken);
-            if (registration is null)
-            {
-                _logger.LogError("Agent registration failed. Retrying in 30s.");
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-            }
+            _agentToken = preconfiguredToken;
+            _agentId = preAgentId;
+            _instrumentId = preInstrumentId;
+            _logger.LogInformation("Using preconfigured agent token; skipping registration.");
         }
+        else
+        {
+            var bootstrapToken = _config.GetValue<string>("Agent:BootstrapToken") ?? "";
+            AgentRegisterResponse? registration = null;
+            while (registration is null && !stoppingToken.IsCancellationRequested)
+            {
+                registration = await _sender.RegisterAsync(bootstrapToken, registerPayload, stoppingToken);
+                if (registration is null)
+                {
+                    _logger.LogError("Agent registration failed. Retrying in 30s.");
+                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                }
+            }
 
-        if (registration is null)
-            return;
+            if (registration is null)
+                return;
 
-        _agentToken = registration.Token;
-        _agentId = registration.AgentId;
-        _instrumentId = registration.InstrumentId;
+            _agentToken = registration.Token;
+            _agentId = registration.AgentId;
+            _instrumentId = registration.InstrumentId;
+        }
 
         // Start outbox sender loop.
         _ = Task.Run(() => RunOutboxSender(stoppingToken), stoppingToken);

@@ -66,9 +66,15 @@ def login(
 
     session_token = generate_token(32)
     refresh_token = generate_token(32)
-    access_expires = datetime.now(timezone.utc) + timedelta(
-        minutes=get_settings().access_token_ttl_minutes
-    )
+    settings = get_settings()
+    if data.remember_me:
+        access_expires = datetime.now(timezone.utc) + timedelta(
+            days=min(settings.max_session_lifetime_days, 30)
+        )
+    else:
+        access_expires = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.access_token_ttl_minutes
+        )
     db.add(
         models.UserSession(
             user_id=user.id,
@@ -80,7 +86,7 @@ def login(
         )
     )
     db.commit()
-    set_auth_cookies(response, session_token, refresh_token)
+    set_auth_cookies(response, session_token, refresh_token, remember_me=data.remember_me)
     audit.log_event(
         db,
         'login_success',

@@ -13,11 +13,12 @@ class ErrorDetail(BaseModel):
 
 
 class UserBase(BaseModel):
-    email: EmailStr
+    email: str
     full_name: str
 
 
 class UserCreate(UserBase):
+    email: EmailStr
     password: str = Field(..., min_length=12)
     role_names: list[str] = []
 
@@ -51,6 +52,11 @@ class UserOut(UserBase):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    remember_me: bool = False
+
+
+class AdminPasswordReset(BaseModel):
+    new_password: str = Field(..., min_length=12)
 
 
 class PasswordResetRequest(BaseModel):
@@ -81,8 +87,15 @@ class InstrumentOut(BaseModel):
     iapi_version: Optional[str] = None
     agent_version: Optional[str] = None
     status: str
-    last_seen_at: Optional[datetime] = None
-    created_at: datetime
+
+
+class InstrumentCreate(BaseModel):
+    name: str
+    serial_number: str
+    model: str = 'Orbitrap Exploris 480'
+    api_version: Optional[str] = None
+    tune_version: Optional[str] = None
+    iapi_version: Optional[str] = None
 
 
 class InstrumentTelemetryOut(BaseModel):
