@@ -28,7 +28,7 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:RELEASE.2024-06-29T03-11-24Z
+    image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
@@ -56,7 +56,8 @@ services:
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-orbitwatch}
-      - ORBITWATCH_SECRET_KEY=${ORBITWATCH_SECRET_KEY:-dev-secret-change-in-production}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     ports:
       - "8000:8000"
     depends_on:
@@ -92,10 +93,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_BASE_URL=/api/v1
-    command: npm run dev -- --host 0.0.0.0
+      - "5173:80"
     depends_on:
       - backend
 

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     secret_key: str = 'dev-secret-change-in-production'
     cookie_secure: bool = False
     cookie_samesite: str = 'lax'
-    cors_origins: str = 'http://localhost:5173,http://localhost:3000'
+    cors_origins: str = 'http://localhost:5173,http://localhost:3000,http://localhost,https://localhost'
 
     database_url: str = 'postgresql+psycopg2://orbitwatch:orbitwatch@localhost:5432/orbitwatch'
     redis_url: str = 'redis://localhost:6379/0'

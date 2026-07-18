@@ -107,7 +107,16 @@ export default function Reports() {
                 <td className='p-2'><StatusBadge status={job.status} /></td>
                 <td className='p-2 text-orbit-muted'>{job.file_key || '–'}</td>
                 <td className='p-2'>
-                  <button onClick={() => refresh(job)} className='h-[24px] px-2 rounded bg-orbit-soft border border-orbit-border text-orbit-text text-[9px]'>Refresh</button>
+                  <button onClick={() => refresh(job)} className='h-[24px] px-2 rounded bg-orbit-soft border border-orbit-border text-orbit-text text-[9px] mr-1'>Refresh</button>
+                  {job.status === 'completed' && (
+                    <a
+                      href={`/api/v1/reports/${job.id}/download`}
+                      className='inline-block h-[24px] px-2 rounded bg-orbit-blue text-white text-[9px] leading-[24px]'
+                      download
+                    >
+                      Download
+                    </a>
+                  )}
                 </td>
               </tr>
             ))}

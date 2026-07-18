@@ -43,6 +43,7 @@ miniodata/
 backend/data/
 agent/vendor/
 agent/OrbitWatchAgent/logs/
+agent/OrbitWatchAgent/data/
 
 # OS
 .DS_Store

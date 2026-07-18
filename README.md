@@ -7,20 +7,54 @@ Production-ready real-time monitoring for Thermo Scientific Orbitrap Exploris 48
 - `agent/` — C# .NET 8 worker service that runs on the Windows instrument PC
 - `backend/` — Python FastAPI central data service, auth, processing, and APIs
 - `frontend/` — React + TypeScript + Vite dashboard
-- `infrastructure/` — Docker Compose and deployment configs
+- `infrastructure/` — Reverse-proxy and deployment configs
 - `docs/` — Architecture and operations documentation
 - `scripts/` — Development and setup helpers
-- `tests/` — Test suites (to be expanded)
+- `tests/` — Test suites
 
-## Development quick start
+## Docker deployment
+
+The fastest way to run the full stack is with Docker Compose.
+
+```bash
+# Copy and edit environment variables
+cp .env.example .env
+
+# Build and start PostgreSQL, Redis, MinIO, backend, worker, and frontend
+docker compose up --build -d
+```
+
+Then open http://localhost:5173. The default admin account is `admin@isotopiq.dev` / `OrbitWatch-Admin-2024!`.
+
+For production:
 
 ```bash
 cp .env.example .env
-# Start PostgreSQL, Redis, MinIO and backend/frontend
-docker compose -f infrastructure/docker-compose.dev.yml up --build
+# Set strong SECRET_KEY, POSTGRES_PASSWORD, S3_SECRET_KEY, and CORS_ORIGINS
+docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-The default admin account is `admin@isotopiq.dev` / `OrbitWatch-Admin-2024!`.
+Production serves on http://localhost (Caddy reverse proxy) or configure TLS by editing `infrastructure/Caddyfile`.
+
+## Development quick start
+
+Without Docker:
+
+```bash
+# Backend
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+uvicorn app.main:app --reload
+
+# Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+The backend defaults to SQLite if `DATABASE_URL` is not set to PostgreSQL.
 
 ## Instrument agent
 
@@ -30,6 +64,8 @@ The agent can run in two modes:
 - `helios` — Thermo IAPI adapter for the Exploris 480 (Windows + Tune/IAPI required)
 
 Set `Agent:Mode=helios` in `agent/OrbitWatchAgent/appsettings.json` on the instrument PC. The agent uses the Thermo IAPI .NET Standard reference assemblies shipped in `agent/OrbitWatchAgent/lib/` and loads the instrument-specific implementation from the local Tune installation via registry.
+
+For pre-registered deployments, use the `Connect Instrument` page in the app to generate an agent token and IDs, then paste them into `agent/OrbitWatchAgent/appsettings.json`.
 
 ## License / proprietary components
 

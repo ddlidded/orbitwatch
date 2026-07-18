@@ -17,7 +17,14 @@ export default function Login() {
       await login(email, password, rememberMe);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed');
+      const data = err.response?.data;
+      const message =
+        data?.error?.message ||
+        (Array.isArray(data?.detail)
+          ? data.detail.map((d: any) => d.msg).join('; ')
+          : data?.detail) ||
+        'Login failed';
+      setError(message);
     }
   };
 
