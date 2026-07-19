@@ -36,6 +36,10 @@ docker compose -f docker-compose.prod.yml up --build -d
 
 Production serves on http://localhost (Caddy reverse proxy) or configure TLS by editing `infrastructure/Caddyfile`.
 
+### Easypanel
+
+For Easypanel deployments, use `docker-compose.easypanel.yml` and follow `docs/easypanel.md`.
+
 ## Development quick start
 
 Without Docker:
