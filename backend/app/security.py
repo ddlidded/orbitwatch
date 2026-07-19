@@ -47,13 +47,15 @@ def set_auth_cookies(response, session_token: str, refresh_token: str, remember_
     else:
         access_exp = now + timedelta(minutes=settings.access_token_ttl_minutes)
         refresh_exp = now + timedelta(days=settings.refresh_token_ttl_days)
+    session_max_age = max(0, int((access_exp - now).total_seconds()))
+    refresh_max_age = max(0, int((refresh_exp - now).total_seconds()))
     response.set_cookie(
         key='session',
         value=session_token,
         httponly=True,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,
-        expires=access_exp,
+        max_age=session_max_age,
         path='/',
     )
     response.set_cookie(
@@ -62,7 +64,7 @@ def set_auth_cookies(response, session_token: str, refresh_token: str, remember_
         httponly=True,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,
-        expires=refresh_exp,
+        max_age=refresh_max_age,
         path='/api/v1/auth/refresh',
     )
     response.set_cookie(
@@ -71,7 +73,7 @@ def set_auth_cookies(response, session_token: str, refresh_token: str, remember_
         httponly=False,
         secure=settings.cookie_secure,
         samesite=settings.cookie_samesite,
-        expires=access_exp,
+        max_age=session_max_age,
         path='/',
     )
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -26,6 +27,10 @@ from app import models
 from app.tasks import store_export_file
 
 logger = logging.getLogger(__name__)
+
+
+def _e(value: Any) -> str:
+    return escape(str(value)) if value is not None else ''
 
 _BRAND_DARK = colors.HexColor('#0b1320')
 _BRAND_ACCENT = colors.HexColor('#3b82f6')
@@ -112,12 +117,12 @@ def build_sample_report(db: Session, sample_id: str, user_id: str) -> str:
         ])
     )
     story.append(header_table)
-    story.append(Paragraph(sample.sample_name, title_style))
+    story.append(Paragraph(_e(sample.sample_name), title_style))
     sequence_name = sample.sequence.name if sample.sequence else '—'
     instrument_name = sample.sequence.instrument.name if sample.sequence and sample.sequence.instrument else '—'
     story.append(
         Paragraph(
-            f'Instrument: {instrument_name} &nbsp;|&nbsp; Sequence: {sequence_name}',
+            f'Instrument: {_e(instrument_name)} &nbsp;|&nbsp; Sequence: {_e(sequence_name)}',
             subtitle_style,
         )
     )
@@ -125,12 +130,12 @@ def build_sample_report(db: Session, sample_id: str, user_id: str) -> str:
 
     # Metadata table
     meta = [
-        ['Sample Name', sample.sample_name],
+        ['Sample Name', _e(sample.sample_name)],
         ['Position', str(sample.position)],
-        ['Sample Type', sample.sample_type or '—'],
-        ['Method', sample.method_name or '—'],
-        ['Polarity', sample.polarity or '—'],
-        ['Acquisition Status', sample.acquisition_status],
+        ['Sample Type', _e(sample.sample_type) or '—'],
+        ['Method', _e(sample.method_name) or '—'],
+        ['Polarity', _e(sample.polarity) or '—'],
+        ['Acquisition Status', _e(sample.acquisition_status)],
         ['Generated', datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')],
     ]
     meta_table = Table(meta, colWidths=[1.6 * inch, 5.4 * inch])
@@ -174,10 +179,10 @@ def build_sample_report(db: Session, sample_id: str, user_id: str) -> str:
             peak = max(st.peak_metrics, key=lambda p: p.calculated_at, default=None) if st.peak_metrics else None
             target_rows.append(
                 [
-                    target.compound_name,
-                    target.adduct or '—',
+                    _e(target.compound_name),
+                    _e(target.adduct) or '—',
                     f'{float(target.target_mz):.4f}',
-                    (peak.detection_status if peak else st.state).replace('_', ' ').title(),
+                    _e((peak.detection_status if peak else st.state).replace('_', ' ').title()),
                     f'{float(peak.observed_rt):.3f}' if peak and peak.observed_rt is not None else '—',
                     f'{float(peak.apex_intensity):.3e}' if peak and peak.apex_intensity is not None else '—',
                     f'{float(peak.signal_to_noise):.1f}' if peak and peak.signal_to_noise is not None else '—',

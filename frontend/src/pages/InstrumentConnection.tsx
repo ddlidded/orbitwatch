@@ -33,8 +33,8 @@ export default function InstrumentConnection() {
     ? `{
   "Agent": {
     "Mode": "helios",
-    "ServerUrl": "${window.location.origin}/api/v1",
-    "Token": "${result.token}",
+    "BackendUrl": "${window.location.origin}",
+    "AgentToken": "${result.token}",
     "AgentId": "${result.agent_id}",
     "InstrumentId": "${result.instrument_id}",
     "Instrument": {

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
+from app.config import get_settings
 from app.database import SessionLocal, engine
 from app.models import (
     AgentCapability,
@@ -17,6 +19,7 @@ from app.models import (
 from app.security import hash_password
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 DEFAULT_PERMISSIONS = [
     ('instrument', 'read'),
@@ -95,10 +98,23 @@ def seed_database():
         # Default admin
         admin = db.query(User).filter_by(email='admin@isotopiq.dev').first()
         if not admin:
+            if settings.admin_initial_password:
+                admin_password = settings.admin_initial_password
+            elif settings.orbitwatch_env == 'production':
+                admin_password = secrets.token_urlsafe(24)
+                logger.warning(
+                    'ORBITWATCH_ADMIN_PASSWORD not set. A one-time admin password has been generated: %s',
+                    admin_password,
+                )
+            else:
+                admin_password = 'OrbitWatch-Admin-2024!'
+                logger.warning(
+                    'Using default admin password. Set ORBITWATCH_ADMIN_PASSWORD in production.'
+                )
             admin = User(
                 email='admin@isotopiq.dev',
                 full_name='System Administrator',
-                hashed_password=hash_password('OrbitWatch-Admin-2024!'),
+                hashed_password=hash_password(admin_password),
                 is_superuser=True,
                 email_verified=True,
             )

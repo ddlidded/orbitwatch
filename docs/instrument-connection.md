@@ -16,7 +16,7 @@ OrbitWatch uses a small Windows service (the OrbitWatch Agent) that runs **on th
 1. Thermo IAPI runtime installed on the instrument PC (the same runtime used by Helios).
 2. The instrument is online, Tune is running, and the instrument serial number is visible in the registry.
 3. Network connectivity from the instrument PC to the OrbitWatch backend.
-4. A valid TLS certificate in production (the backend rejects unencrypted `Agent:ServerUrl` in production).
+4. A valid TLS certificate in production (the backend rejects unencrypted `Agent:BackendUrl` in production).
 
 ## GUI Flow (Recommended)
 
@@ -35,11 +35,11 @@ OrbitWatch uses a small Windows service (the OrbitWatch Agent) that runs **on th
 
 ## Manual Registration (Alternative)
 
-If you prefer to register from the instrument PC directly, start the agent with an empty `Agent:Token` and a configured `Agent:BootstrapToken`. The agent will call `POST /api/v1/agents/register` and receive a token automatically. This is the default development behavior.
+If you prefer to register from the instrument PC directly, start the agent with an empty `Agent:AgentToken` and a configured `Agent:BootstrapToken` matching the backend's `AGENT_BOOTSTRAP_TOKEN`. The agent will call `POST /api/v1/agents/register` and receive a token automatically. In production, `AGENT_BOOTSTRAP_TOKEN` must be set.
 
 ## Troubleshooting
 
-- **Registration fails / 401**: Verify the token, agent ID, and instrument ID in `appsettings` match the GUI output exactly.
+- **Registration fails / 401 or 403**: Verify the token, agent ID, and instrument ID in `appsettings` match the GUI output exactly. If using bootstrap registration, confirm `AGENT_BOOTSTRAP_TOKEN` is set on the backend and matches `Agent:BootstrapToken`.
 - **No sequence data**: Verify Xcalibur is running a sequence and that the IAPI runtime has loaded. The agent reads sequence information in a read-only manner from `IState` and `AcquisitionStreamOpening` events.
 - **Agent crashes on startup**: Check that the vendored `Thermo.API.*.NetStd` DLLs are present next to the agent executable and that the .NET 8 runtime is installed.
 - **Firewall**: The agent only makes outbound HTTPS/WebSocket calls on port 443. No inbound ports are required.

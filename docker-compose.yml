@@ -57,6 +57,8 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-orbitwatch}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
+      - ORBITWATCH_ADMIN_PASSWORD=${ORBITWATCH_ADMIN_PASSWORD:-}
+      - AGENT_BOOTSTRAP_TOKEN=${AGENT_BOOTSTRAP_TOKEN:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     ports:
       - "8000:8000"

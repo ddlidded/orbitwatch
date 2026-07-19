@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -54,6 +55,7 @@ def download_report(
     data = get_export_file(report.file_key)
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Report file not found')
-    filename = f"orbitwatch_report_{report.report_type}_{report_id}.pdf"
+    safe_type = re.sub(r'[^\w\-_.]', '_', report.report_type)[:64]
+    filename = f"orbitwatch_report_{safe_type}_{report_id}.pdf"
     headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
     return Response(data, media_type='application/pdf', headers=headers)

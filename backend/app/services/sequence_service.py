@@ -119,17 +119,19 @@ def broadcast_sample_update(sample: models.Sample) -> None:
     from asyncio import get_event_loop
     try:
         loop = get_event_loop()
+        payload = {
+            'type': 'sample.updated',
+            'sample_id': str(sample.id),
+            'status': sample.acquisition_status,
+            'progress': _sample_progress(sample),
+        }
         loop.create_task(
-            realtime_manager.broadcast(
-                f'sequence:{sample.sequence_id}',
-                {
-                    'type': 'sample.updated',
-                    'sample_id': str(sample.id),
-                    'status': sample.acquisition_status,
-                    'progress': _sample_progress(sample),
-                },
-            )
+            realtime_manager.broadcast(f'sequence:{sample.sequence_id}', payload)
         )
+        if sample.sequence:
+            loop.create_task(
+                realtime_manager.broadcast(f'instrument:{sample.sequence.instrument_id}', payload)
+            )
     except Exception:
         pass
 
@@ -138,19 +140,21 @@ def broadcast_scan_update(sample: models.Sample, scan: models.Scan) -> None:
     from asyncio import get_event_loop
     try:
         loop = get_event_loop()
+        payload = {
+            'type': 'scan',
+            'scan_number': scan.scan_number,
+            'retention_time_minutes': float(scan.retention_time_minutes),
+            'tic': float(scan.tic) if scan.tic is not None else None,
+            'ms_order': scan.ms_order,
+            'polarity': scan.polarity,
+        }
         loop.create_task(
-            realtime_manager.broadcast(
-                f'sample:{sample.id}',
-                {
-                    'type': 'scan',
-                    'scan_number': scan.scan_number,
-                    'retention_time_minutes': float(scan.retention_time_minutes),
-                    'tic': float(scan.tic) if scan.tic is not None else None,
-                    'ms_order': scan.ms_order,
-                    'polarity': scan.polarity,
-                },
-            )
+            realtime_manager.broadcast(f'sample:{sample.id}', payload)
         )
+        if sample.sequence:
+            loop.create_task(
+                realtime_manager.broadcast(f'instrument:{sample.sequence.instrument_id}', payload)
+            )
     except Exception:
         pass
 

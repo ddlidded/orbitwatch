@@ -61,8 +61,6 @@ export default function Dashboard() {
   const channels = useMemo(() => {
     const list: string[] = [];
     if (summary?.current_sequence?.instrument_id) list.push(`instrument:${summary.current_sequence.instrument_id}`);
-    if (summary?.current_sequence?.id) list.push(`sequence:${summary.current_sequence.id}`);
-    if (summary?.current_sample?.id) list.push(`sample:${summary.current_sample.id}`);
     return list;
   }, [summary]);
 

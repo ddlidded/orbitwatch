@@ -36,7 +36,7 @@ public sealed class Worker : BackgroundService
         var agentVersion = "0.0.1";
 
         var registerPayload = new AgentRegisterPayload(hostname, agentVersion, identity.SerialNumber, identity.Name, identity.Model, identity.ApiVersion, identity.TuneVersion, identity.IapiVersion, capabilities);
-        var preconfiguredToken = _config.GetValue<string>("Agent:Token") ?? "";
+        var preconfiguredToken = _config.GetValue<string>("Agent:AgentToken") ?? "";
 
         if (!string.IsNullOrWhiteSpace(preconfiguredToken) &&
             Guid.TryParse(_config.GetValue<string>("Agent:AgentId"), out var preAgentId) &&

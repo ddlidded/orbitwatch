@@ -11,9 +11,18 @@ from app import models
 from app.realtime.manager import manager as realtime_manager
 
 
+def _uuid_or_none(value: Any) -> UUID | None:
+    if not value:
+        return None
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
 def create_alert(
     db: Session,
-    instrument_id: str,
+    instrument_id: Optional[str],
     category: str,
     severity: str,
     message: str,
@@ -21,16 +30,19 @@ def create_alert(
     sample_id: Optional[str] = None,
     target_id: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
-) -> models.Alert:
+) -> models.Alert | None:
+    instrument_uuid = _uuid_or_none(instrument_id)
+    if not instrument_uuid:
+        return None
     # Deduplicate within the last 60 seconds for same category/instrument.
     cutoff = datetime.now(timezone.utc).timestamp() - 60
     existing = (
         db.query(models.Alert)
         .filter(
-            models.Alert.instrument_id == UUID(instrument_id),
+            models.Alert.instrument_id == instrument_uuid,
             models.Alert.category == category,
-            models.Alert.sample_id == (UUID(sample_id) if sample_id else None),
-            models.Alert.target_id == (UUID(target_id) if target_id else None),
+            models.Alert.sample_id == _uuid_or_none(sample_id),
+            models.Alert.target_id == _uuid_or_none(target_id),
             func.extract('epoch', models.Alert.last_seen_at) >= cutoff,
         )
         .first()
@@ -42,10 +54,10 @@ def create_alert(
         return existing
 
     alert = models.Alert(
-        instrument_id=UUID(instrument_id),
-        sequence_id=UUID(sequence_id) if sequence_id else None,
-        sample_id=UUID(sample_id) if sample_id else None,
-        target_id=UUID(target_id) if target_id else None,
+        instrument_id=instrument_uuid,
+        sequence_id=_uuid_or_none(sequence_id),
+        sample_id=_uuid_or_none(sample_id),
+        target_id=_uuid_or_none(target_id),
         category=category,
         severity=severity,
         message=message,

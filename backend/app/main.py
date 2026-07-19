@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +36,18 @@ app = FastAPI(
 )
 
 settings = get_settings()
+
+_DEFAULT_SECRET_KEY = 'change-me-in-production'
+if settings.orbitwatch_env == 'production':
+    if settings.secret_key == _DEFAULT_SECRET_KEY:
+        logger.error('SECRET_KEY is using the default value in production. Set a strong SECRET_KEY before starting.')
+        sys.exit(1)
+    if not settings.agent_bootstrap_token:
+        logger.error('AGENT_BOOTSTRAP_TOKEN is not set in production. Set it to a random string to allow agent registration.')
+        sys.exit(1)
+    if settings.cors_origins == '*':
+        logger.error('CORS_ORIGINS cannot be "*" in production when credentials are enabled. Set allowed origins explicitly.')
+        sys.exit(1)
 
 # CORS for development; restrict to exact origins in production.
 app.add_middleware(

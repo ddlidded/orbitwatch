@@ -45,14 +45,12 @@ def import_target_list(
 @router.post('', response_model=schemas.TargetListOut)
 def create_target_list(
     request: Request,
-    data: dict,
+    data: schemas.TargetListCreate,
     db: Session = Depends(get_db),
     user: models.User = Depends(require_permission('target:write')),
 ):
-    name = data.get('name')
-    description = data.get('description')
-    if not name:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='Name is required')
+    name = data.name
+    description = data.description
     # Minimal placeholder; full import uses /import.
     target_list = models.TargetList(name=name, description=description, owner_id=user.id)
     db.add(target_list)

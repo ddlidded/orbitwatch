@@ -45,6 +45,8 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY:-change-me-in-production}
       - S3_BUCKET=${S3_BUCKET:-orbitwatch}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ORBITWATCH_ADMIN_PASSWORD=${ORBITWATCH_ADMIN_PASSWORD:-}
+      - AGENT_BOOTSTRAP_TOKEN=${AGENT_BOOTSTRAP_TOKEN:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://localhost,http://localhost}
     depends_on:
       postgres:

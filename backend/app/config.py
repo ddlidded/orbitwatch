@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,8 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
     orbitwatch_env: str = 'development'
-    secret_key: str = 'dev-secret-change-in-production'
-    cookie_secure: bool = False
+    secret_key: str = 'change-me-in-production'
+    cookie_secure: bool = Field(default=False)
     cookie_samesite: str = 'lax'
     cors_origins: str = 'http://localhost:5173,http://localhost:3000,http://localhost,https://localhost'
 
@@ -22,12 +23,21 @@ class Settings(BaseSettings):
     s3_region: str = 'us-east-1'
 
     agent_token_hash_salt: str = 'agent-salt'
+    agent_bootstrap_token: str | None = Field(default=None, alias='AGENT_BOOTSTRAP_TOKEN')
     agent_message_max_bytes: int = 1_048_576
+
+    admin_initial_password: str | None = Field(default=None, alias='ORBITWATCH_ADMIN_PASSWORD')
 
     access_token_ttl_minutes: int = 30
     refresh_token_ttl_days: int = 7
     max_session_lifetime_days: int = 30
     inactivity_timeout_minutes: int = 60
+
+    @model_validator(mode='after')
+    def _secure_in_production(self):
+        if self.orbitwatch_env == 'production' and 'cookie_secure' not in self.model_fields_set:
+            self.cookie_secure = True
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

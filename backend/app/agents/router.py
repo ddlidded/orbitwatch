@@ -31,8 +31,15 @@ def register_agent(
     data: schemas.AgentRegister,
     db: Session = Depends(get_db),
 ):
-    # Agents are authenticated by a pre-shared secret in a real deployment,
-    # or by operator approval. Here we allow first registration for dev/testing.
+    settings = get_settings()
+    bootstrap_token = request.headers.get('x-agent-token') or ''
+    expected = settings.agent_bootstrap_token
+    if settings.orbitwatch_env == 'production' or expected:
+        if not expected or not hmac.compare_digest(bootstrap_token, expected):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail='Invalid or missing agent bootstrap token',
+            )
     return ingestion.handle_agent_register(db, data.model_dump(), data.capabilities)
 
 
@@ -45,6 +52,10 @@ def receive_messages(
     settings = get_settings()
     # Optional body-size defense already enforced by FastAPI/Starlette.
     agent = _get_agent(request, db)
+    if str(agent.id) != str(envelope.agentId):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Agent ID mismatch')
+    if agent.instrument_id and str(agent.instrument_id) != str(envelope.instrumentId):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Instrument ID mismatch')
     if ingestion._dedup_message(db, str(agent.id), str(envelope.messageId), envelope.type):
         db.commit()
         return schemas.AgentMessageAck(acknowledged_message_ids=[envelope.messageId])
@@ -85,6 +96,8 @@ def get_agent_targets(
     db: Session = Depends(get_db),
     agent: models.InstrumentAgent = Depends(_get_agent),
 ):
+    if agent.instrument_id and str(agent.instrument_id) != instrument_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Instrument not assigned to this agent')
     sample = (
         db.query(models.Sample)
         .join(models.Sequence)

@@ -43,12 +43,15 @@ In the Easypanel **Environment** section, set at least these variables:
 | `S3_ACCESS_KEY` | MinIO root username | `minioadmin` |
 | `S3_SECRET_KEY` | **Strong** MinIO root password | generate one |
 | `S3_BUCKET` | MinIO bucket name | `orbitwatch` |
+| `ORBITWATCH_ADMIN_PASSWORD` | Initial admin password | generate a strong password |
+| `AGENT_BOOTSTRAP_TOKEN` | Pre-shared secret for auto agent registration | generate a 64-char random string |
 
 Optional:
 
 | Variable | Description |
 |----------|-------------|
 | `S3_REGION` | `us-east-1` |
+| `COOKIE_SECURE` | `true` when serving over HTTPS (defaults to `true` in production) |
 
 Do **not** set `DATABASE_URL`, `REDIS_URL`, or `S3_ENDPOINT` in the Easypanel UI. The compose file hardcodes them to the built-in `postgres`, `redis`, and `minio` services. The only values you should override are the secrets above and `CORS_ORIGINS`.
 
@@ -80,10 +83,10 @@ Wait until all containers report healthy:
 
 ## 7. Initial login
 
-Once the deployment is green, open your frontend domain and log in with the default admin account:
+Once the deployment is green, open your frontend domain and log in with the admin account:
 
 - **Email:** `admin@isotopiq.dev`
-- **Password:** `OrbitWatch-Admin-2024!`
+- **Password:** the value of `ORBITWATCH_ADMIN_PASSWORD` if you set it, otherwise check the backend container logs for the generated one-time password.
 
 Change this password immediately under **Settings → User Management** or the **Profile** page.
 
@@ -97,7 +100,7 @@ On the Windows instrument PC:
    ```json
    {
      "Agent": {
-       "BackendUrl": "https://orbitwatch.yourdomain.com/api/v1",
+       "BackendUrl": "https://orbitwatch.yourdomain.com",
        "Mode": "helios"
      }
    }
@@ -106,6 +109,8 @@ On the Windows instrument PC:
 3. Run the agent.
 
 For replay/dev mode, use `"Mode": "replay"`.
+
+For manual agent registration from the instrument PC, set `Agent:BootstrapToken` to the value of `AGENT_BOOTSTRAP_TOKEN` and leave `Agent:AgentToken` empty.
 
 ## 9. Updating the deployment
 
@@ -116,4 +121,4 @@ When you push changes to the connected Git branch, Easypanel can auto-redeploy i
 - **Backend fails to start:** Check that `SECRET_KEY` and `POSTGRES_PASSWORD` are set. Do not override `DATABASE_URL`; it is built automatically from `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
 - **Frontend shows blank/API errors:** Verify `CORS_ORIGINS` includes your exact domain (`https://` if using HTTPS).
 - **MinIO not accessible:** Ensure `S3_ACCESS_KEY` and `S3_SECRET_KEY` are set and the `minio` healthcheck passes.
-- **Agent cannot connect:** Confirm the agent `BackendUrl` points to the frontend domain (or a backend domain) and includes `/api/v1`.
+- **Agent cannot connect:** Confirm the agent `BackendUrl` points to the frontend or backend domain without `/api/v1` (the agent appends `/api/v1` internally).

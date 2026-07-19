@@ -67,7 +67,13 @@ def store_export_file(data: bytes, key: str, content_type: str) -> str:
 
 def get_export_file(key: str) -> bytes | None:
     if key.startswith('local://'):
-        path = _local_store_dir() / key.removeprefix('local://')
+        suffix = key.removeprefix('local://').lstrip('/')
+        if '..' in suffix or suffix.startswith('/'):
+            return None
+        store_dir = _local_store_dir().resolve()
+        path = (store_dir / suffix).resolve()
+        if not str(path).startswith(str(store_dir)):
+            return None
         if path.exists():
             return path.read_bytes()
         return None
