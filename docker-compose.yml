@@ -50,9 +50,9 @@ services:
       dockerfile: Dockerfile
     environment:
       - ORBITWATCH_ENV=${ORBITWATCH_ENV:-development}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://orbitwatch:orbitwatch@postgres:5432/orbitwatch}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-orbitwatch}:${POSTGRES_PASSWORD:-orbitwatch}@postgres:5432/${POSTGRES_DB:-orbitwatch}
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-orbitwatch}
@@ -75,9 +75,9 @@ services:
       dockerfile: Dockerfile
     environment:
       - ORBITWATCH_ENV=${ORBITWATCH_ENV:-development}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://orbitwatch:orbitwatch@postgres:5432/orbitwatch}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-orbitwatch}:${POSTGRES_PASSWORD:-orbitwatch}@postgres:5432/${POSTGRES_DB:-orbitwatch}
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
       - S3_BUCKET=${S3_BUCKET:-orbitwatch}

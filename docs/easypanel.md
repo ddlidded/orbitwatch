@@ -44,16 +44,13 @@ In the Easypanel **Environment** section, set at least these variables:
 | `S3_SECRET_KEY` | **Strong** MinIO root password | generate one |
 | `S3_BUCKET` | MinIO bucket name | `orbitwatch` |
 
-Optional but recommended:
+Optional:
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | Override the default Postgres URL |
-| `REDIS_URL` | Override the default Redis URL |
-| `S3_ENDPOINT` | Override the default MinIO URL |
 | `S3_REGION` | `us-east-1` |
 
-The defaults in `docker-compose.easypanel.yml` are safe for internal networking but must be overridden with real secrets.
+Do **not** set `DATABASE_URL`, `REDIS_URL`, or `S3_ENDPOINT` in the Easypanel UI. The compose file hardcodes them to the built-in `postgres`, `redis`, and `minio` services. The only values you should override are the secrets above and `CORS_ORIGINS`.
 
 ## 5. Bind a domain
 
@@ -116,7 +113,7 @@ When you push changes to the connected Git branch, Easypanel can auto-redeploy i
 
 ## Troubleshooting
 
-- **Backend fails to start:** Check that `SECRET_KEY` and `POSTGRES_PASSWORD` are set and `DATABASE_URL` matches.
+- **Backend fails to start:** Check that `SECRET_KEY` and `POSTGRES_PASSWORD` are set. Do not override `DATABASE_URL`; it is built automatically from `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
 - **Frontend shows blank/API errors:** Verify `CORS_ORIGINS` includes your exact domain (`https://` if using HTTPS).
 - **MinIO not accessible:** Ensure `S3_ACCESS_KEY` and `S3_SECRET_KEY` are set and the `minio` healthcheck passes.
 - **Agent cannot connect:** Confirm the agent `BackendUrl` points to the frontend domain (or a backend domain) and includes `/api/v1`.
