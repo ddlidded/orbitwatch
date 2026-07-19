@@ -10,10 +10,12 @@
     }
 
     handle /docs* {
+        rewrite * /api/v1{uri}
         reverse_proxy backend:8000
     }
 
     handle /openapi.json {
+        rewrite * /api/v1/openapi.json
         reverse_proxy backend:8000
     }
 
