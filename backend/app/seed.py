@@ -16,7 +16,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.security import hash_password
+from app.security import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -97,20 +97,20 @@ def seed_database():
 
         # Default admin
         admin = db.query(User).filter_by(email='admin@isotopiq.dev').first()
+        if settings.admin_initial_password:
+            admin_password = settings.admin_initial_password
+        elif settings.orbitwatch_env == 'production':
+            admin_password = secrets.token_urlsafe(24)
+            logger.warning(
+                'ORBITWATCH_ADMIN_PASSWORD not set. A one-time admin password has been generated: %s',
+                admin_password,
+            )
+        else:
+            admin_password = 'OrbitWatch-Admin-2024!'
+            logger.warning(
+                'Using default admin password. Set ORBITWATCH_ADMIN_PASSWORD in production.'
+            )
         if not admin:
-            if settings.admin_initial_password:
-                admin_password = settings.admin_initial_password
-            elif settings.orbitwatch_env == 'production':
-                admin_password = secrets.token_urlsafe(24)
-                logger.warning(
-                    'ORBITWATCH_ADMIN_PASSWORD not set. A one-time admin password has been generated: %s',
-                    admin_password,
-                )
-            else:
-                admin_password = 'OrbitWatch-Admin-2024!'
-                logger.warning(
-                    'Using default admin password. Set ORBITWATCH_ADMIN_PASSWORD in production.'
-                )
             admin = User(
                 email='admin@isotopiq.dev',
                 full_name='System Administrator',
@@ -123,6 +123,12 @@ def seed_database():
             admin_role = role_map['system_admin']
             if not db.query(UserRole).filter_by(user_id=admin.id, role_id=admin_role.id).first():
                 db.add(UserRole(user_id=admin.id, role_id=admin_role.id))
+        elif settings.admin_initial_password and not verify_password(settings.admin_initial_password, admin.hashed_password):
+            admin.hashed_password = hash_password(admin_password)
+            logger.warning(
+                'ORBITWATCH_ADMIN_PASSWORD has changed; the admin password has been updated. '
+                'Unset ORBITWATCH_ADMIN_PASSWORD after first boot if you do not want it to reset the admin password on every restart.'
+            )
 
         # Default algorithm version
         if not db.query(AlgorithmVersion).filter_by(name='provisional_peak', version='1.0.0').first():
