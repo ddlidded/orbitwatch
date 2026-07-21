@@ -30,100 +30,127 @@ public sealed class Worker : BackgroundService
     {
         _logger.LogInformation("OrbitWatch agent starting...");
 
-        var identity = await _instrument.GetInstrumentIdentityAsync(stoppingToken);
-        var capabilities = new Dictionary<string, bool> { ["scan"] = true, ["telemetry"] = true, ["rawfile"] = true };
-        var hostname = Environment.MachineName;
-        var agentVersion = "0.0.1";
+        using var backgroundCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var backgroundTasks = new List<Task>();
 
-        var registerPayload = new AgentRegisterPayload(hostname, agentVersion, identity.SerialNumber, identity.Name, identity.Model, identity.ApiVersion, identity.TuneVersion, identity.IapiVersion, capabilities);
-        var preconfiguredToken = _config.GetValue<string>("Agent:AgentToken") ?? "";
-
-        if (!string.IsNullOrWhiteSpace(preconfiguredToken) &&
-            Guid.TryParse(_config.GetValue<string>("Agent:AgentId"), out var preAgentId) &&
-            Guid.TryParse(_config.GetValue<string>("Agent:InstrumentId"), out var preInstrumentId))
+        try
         {
-            _agentToken = preconfiguredToken;
-            _agentId = preAgentId;
-            _instrumentId = preInstrumentId;
-            _logger.LogInformation("Using preconfigured agent token; skipping registration.");
-        }
-        else
-        {
-            var bootstrapToken = _config.GetValue<string>("Agent:BootstrapToken") ?? "";
-            AgentRegisterResponse? registration = null;
-            while (registration is null && !stoppingToken.IsCancellationRequested)
+            while (!stoppingToken.IsCancellationRequested)
             {
-                registration = await _sender.RegisterAsync(bootstrapToken, registerPayload, stoppingToken);
-                if (registration is null)
+                try
                 {
-                    _logger.LogError("Agent registration failed. Retrying in 30s.");
+                    var identity = await _instrument.GetInstrumentIdentityAsync(stoppingToken);
+                    var capabilities = new Dictionary<string, bool> { ["scan"] = true, ["telemetry"] = true, ["rawfile"] = true };
+                    var hostname = Environment.MachineName;
+                    var agentVersion = "0.0.1";
+
+                    var registerPayload = new AgentRegisterPayload(hostname, agentVersion, identity.SerialNumber, identity.Name, identity.Model, identity.ApiVersion, identity.TuneVersion, identity.IapiVersion, capabilities);
+                    var preconfiguredToken = _config.GetValue<string>("Agent:AgentToken") ?? "";
+
+                    if (!string.IsNullOrWhiteSpace(preconfiguredToken) &&
+                        Guid.TryParse(_config.GetValue<string>("Agent:AgentId"), out var preAgentId) &&
+                        Guid.TryParse(_config.GetValue<string>("Agent:InstrumentId"), out var preInstrumentId))
+                    {
+                        _agentToken = preconfiguredToken;
+                        _agentId = preAgentId;
+                        _instrumentId = preInstrumentId;
+                        _logger.LogInformation("Using preconfigured agent token; skipping registration.");
+                    }
+                    else
+                    {
+                        var bootstrapToken = _config.GetValue<string>("Agent:BootstrapToken") ?? "";
+                        AgentRegisterResponse? registration = null;
+                        while (registration is null && !stoppingToken.IsCancellationRequested)
+                        {
+                            registration = await _sender.RegisterAsync(bootstrapToken, registerPayload, stoppingToken);
+                            if (registration is null)
+                            {
+                                _logger.LogError("Agent registration failed. Retrying in 30s.");
+                                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                            }
+                        }
+
+                        if (registration is null)
+                            return;
+
+                        _agentToken = registration.Token;
+                        _agentId = registration.AgentId;
+                        _instrumentId = registration.InstrumentId;
+                    }
+
+                    if (backgroundTasks.Count == 0)
+                    {
+                        backgroundTasks.Add(Task.Run(() => RunOutboxSender(backgroundCts.Token), backgroundCts.Token));
+                        backgroundTasks.Add(Task.Run(() => RunTelemetryAsync(backgroundCts.Token), backgroundCts.Token));
+                    }
+
+                    var sequence = await _instrument.GetSequenceSnapshotAsync(stoppingToken);
+                    await EnqueueAsync("sequence.started", new Dictionary<string, object?>
+                    {
+                        ["external_sequence_id"] = sequence.ExternalSequenceId,
+                        ["sequence_name"] = sequence.SequenceName,
+                        ["started_at"] = DateTime.UtcNow.ToString("O"),
+                        ["samples"] = JsonSerializer.Deserialize<List<Dictionary<string, object?>>>(
+                            JsonSerializer.Serialize(sequence.Samples, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }))
+                    }, stoppingToken);
+
+                    foreach (var sample in sequence.Samples)
+                    {
+                        await EnqueueAsync("sample.started", new Dictionary<string, object?>
+                        {
+                            ["external_sequence_id"] = sequence.ExternalSequenceId,
+                            ["external_sample_id"] = sample.ExternalSampleId,
+                            ["started_at"] = DateTime.UtcNow.ToString("O")
+                        }, stoppingToken);
+
+                        await foreach (var scan in _instrument.StreamScansAsync(sample.ExternalSampleId, stoppingToken).WithCancellation(stoppingToken))
+                        {
+                            await EnqueueAsync("scan", new Dictionary<string, object?>
+                            {
+                                ["external_sequence_id"] = scan.ExternalSequenceId,
+                                ["external_sample_id"] = scan.ExternalSampleId,
+                                ["scan_number"] = scan.ScanNumber,
+                                ["retention_time_minutes"] = scan.RetentionTimeMinutes,
+                                ["ms_order"] = scan.MsOrder,
+                                ["polarity"] = scan.Polarity,
+                                ["scan_type"] = scan.ScanType,
+                                ["tic"] = scan.Tic,
+                                ["base_peak_mz"] = scan.BasePeakMz,
+                                ["base_peak_intensity"] = scan.BasePeakIntensity,
+                                ["low_mz"] = scan.LowMz,
+                                ["high_mz"] = scan.HighMz,
+                                ["mz_array"] = scan.MzArray,
+                                ["intensity_array"] = scan.IntensityArray
+                            }, stoppingToken);
+                        }
+
+                        await EnqueueAsync("sample.completed", new Dictionary<string, object?>
+                        {
+                            ["external_sequence_id"] = sequence.ExternalSequenceId,
+                            ["external_sample_id"] = sample.ExternalSampleId,
+                            ["completed_at"] = DateTime.UtcNow.ToString("O")
+                        }, stoppingToken);
+                    }
+
+                    // Brief pause before checking for a new sequence again.
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Agent main loop encountered an error. Restarting in 30s.");
                     await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
                 }
             }
-
-            if (registration is null)
-                return;
-
-            _agentToken = registration.Token;
-            _agentId = registration.AgentId;
-            _instrumentId = registration.InstrumentId;
         }
-
-        // Start outbox sender loop.
-        _ = Task.Run(() => RunOutboxSender(stoppingToken), stoppingToken);
-
-        // Start telemetry stream in the background so instrument health metrics are sent concurrently with scans.
-        var telemetryTask = Task.Run(() => RunTelemetryAsync(stoppingToken), stoppingToken);
-
-        var sequence = await _instrument.GetSequenceSnapshotAsync(stoppingToken);
-        await EnqueueAsync("sequence.started", new Dictionary<string, object?>
+        finally
         {
-            ["external_sequence_id"] = sequence.ExternalSequenceId,
-            ["sequence_name"] = sequence.SequenceName,
-            ["started_at"] = DateTime.UtcNow.ToString("O"),
-            ["samples"] = JsonSerializer.Deserialize<List<Dictionary<string, object?>>>(
-                JsonSerializer.Serialize(sequence.Samples, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }))
-        }, stoppingToken);
-
-        foreach (var sample in sequence.Samples)
-        {
-            await EnqueueAsync("sample.started", new Dictionary<string, object?>
-            {
-                ["external_sequence_id"] = sequence.ExternalSequenceId,
-                ["external_sample_id"] = sample.ExternalSampleId,
-                ["started_at"] = DateTime.UtcNow.ToString("O")
-            }, stoppingToken);
-
-            await foreach (var scan in _instrument.StreamScansAsync(sample.ExternalSampleId, stoppingToken).WithCancellation(stoppingToken))
-            {
-                await EnqueueAsync("scan", new Dictionary<string, object?>
-                {
-                    ["external_sequence_id"] = scan.ExternalSequenceId,
-                    ["external_sample_id"] = scan.ExternalSampleId,
-                    ["scan_number"] = scan.ScanNumber,
-                    ["retention_time_minutes"] = scan.RetentionTimeMinutes,
-                    ["ms_order"] = scan.MsOrder,
-                    ["polarity"] = scan.Polarity,
-                    ["scan_type"] = scan.ScanType,
-                    ["tic"] = scan.Tic,
-                    ["base_peak_mz"] = scan.BasePeakMz,
-                    ["base_peak_intensity"] = scan.BasePeakIntensity,
-                    ["low_mz"] = scan.LowMz,
-                    ["high_mz"] = scan.HighMz,
-                    ["mz_array"] = scan.MzArray,
-                    ["intensity_array"] = scan.IntensityArray
-                }, stoppingToken);
-            }
-
-            await EnqueueAsync("sample.completed", new Dictionary<string, object?>
-            {
-                ["external_sequence_id"] = sequence.ExternalSequenceId,
-                ["external_sample_id"] = sample.ExternalSampleId,
-                ["completed_at"] = DateTime.UtcNow.ToString("O")
-            }, stoppingToken);
+            backgroundCts.Cancel();
+            await Task.WhenAll(backgroundTasks);
         }
-
-        await telemetryTask;
     }
 
     private async Task RunTelemetryAsync(CancellationToken cancellationToken)

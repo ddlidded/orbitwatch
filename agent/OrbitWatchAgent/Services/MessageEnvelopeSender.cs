@@ -25,40 +25,69 @@ public sealed class MessageEnvelopeSender
         _httpClient = httpClient;
         _config = config;
         _logger = logger;
-        _httpClient.BaseAddress = new Uri(config.GetValue<string>("Agent:BackendUrl") ?? "http://localhost:8000");
+        var backendUrl = config.GetValue<string>("Agent:BackendUrl");
+        if (string.IsNullOrWhiteSpace(backendUrl) || !Uri.TryCreate(backendUrl, UriKind.Absolute, out var baseAddress))
+        {
+            throw new InvalidOperationException($"Agent:BackendUrl is missing or invalid: '{backendUrl}'. Set it to your OrbitWatch backend URL (e.g. https://orbitwatch.yourdomain.com).");
+        }
+        _httpClient.BaseAddress = baseAddress;
     }
 
     public async Task<AgentRegisterResponse?> RegisterAsync(string bootstrapToken, AgentRegisterPayload payload, CancellationToken cancellationToken = default)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agents/register")
+        try
         {
-            Content = JsonContent.Create(payload, options: RegisterOptions)
-        };
-        request.Headers.Add("x-agent-token", bootstrapToken);
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agents/register")
+            {
+                Content = JsonContent.Create(payload, options: RegisterOptions)
+            };
+            request.Headers.Add("x-agent-token", bootstrapToken);
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Registration failed: {Status} {Body}", response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+                return null;
+            }
+            _logger.LogInformation("Agent registered.");
+            return await response.Content.ReadFromJsonAsync<AgentRegisterResponse>(new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }, cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError("Registration failed: {Status} {Body}", response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Agent registration request failed; will retry.");
             return null;
         }
-        _logger.LogInformation("Agent registered.");
-        return await response.Content.ReadFromJsonAsync<AgentRegisterResponse>(new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }, cancellationToken: cancellationToken);
     }
 
     public async Task<bool> SendAsync(string agentToken, MessageEnvelope envelope, CancellationToken cancellationToken = default)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agents/messages")
+        try
         {
-            Content = JsonContent.Create(envelope, options: EnvelopeOptions)
-        };
-        request.Headers.Add("x-agent-token", agentToken);
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agents/messages")
+            {
+                Content = JsonContent.Create(envelope, options: EnvelopeOptions)
+            };
+            request.Headers.Add("x-agent-token", agentToken);
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to send message {MessageId}: {Status} {Body}", envelope.MessageId, response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+                return false;
+            }
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Failed to send message {MessageId}: {Status} {Body}", envelope.MessageId, response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send message {MessageId}; will retry.", envelope.MessageId);
             return false;
         }
-        return true;
     }
 }
 

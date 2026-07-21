@@ -20,7 +20,11 @@ public sealed class DurableMessageQueue : IDisposable
     {
         _logger = logger;
         var path = config.GetValue<string>("Agent:Queue:Path") ?? "data/agent-queue.db";
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (!Path.IsPathRooted(path))
+            path = Path.Combine(AppContext.BaseDirectory, path);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
         _connectionString = $"Data Source={path}";
         Initialize();
     }

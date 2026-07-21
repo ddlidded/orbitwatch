@@ -4,7 +4,7 @@ This document describes how to connect a Thermo Scientific Orbitrap Exploris 480
 
 ## Summary
 
-OrbitWatch uses a small Windows service (the OrbitWatch Agent) that runs **on the instrument PC**. The agent:
+OrbitWatch uses a small Windows background agent (the OrbitWatch Agent) that runs **on the instrument PC**. It is a console/service application with **no GUI**. The agent:
 
 - Reads sequence and scan data through Thermo's official IAPI (or Helios, which wraps IAPI).
 - Streams that data outbound to the OrbitWatch backend over HTTPS/WebSocket.
@@ -39,9 +39,10 @@ If you prefer to register from the instrument PC directly, start the agent with 
 
 ## Troubleshooting
 
+- **Window opens and closes immediately / agent crashes**: The agent is a console/service app with no GUI. Open a Command Prompt or PowerShell, `cd` into the extracted folder, and run `OrbitWatchAgent.exe` directly so you can see the error. If the backend is not reachable, the agent will log a connection error and retry instead of crashing.
 - **Registration fails / 401 or 403**: Verify the token, agent ID, and instrument ID in `appsettings` match the GUI output exactly. If using bootstrap registration, confirm `AGENT_BOOTSTRAP_TOKEN` is set on the backend and matches `Agent:BootstrapToken`.
 - **No sequence data**: Verify Xcalibur is running a sequence and that the IAPI runtime has loaded. The agent reads sequence information in a read-only manner from `IState` and `AcquisitionStreamOpening` events.
-- **Agent crashes on startup**: Check that the vendored `Thermo.API.*.NetStd` DLLs are present next to the agent executable and that the .NET 8 runtime is installed.
+- **Agent crashes on startup in `helios` mode**: Check that the vendored `Thermo.API.*.NetStd` DLLs are present next to the agent executable, that .NET 8 runtime is installed, and that Thermo IAPI/Tune are installed on the PC.
 - **Firewall**: The agent only makes outbound HTTPS/WebSocket calls on port 443. No inbound ports are required.
 
 ## Security Notes
