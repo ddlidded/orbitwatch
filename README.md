@@ -31,6 +31,7 @@ For production:
 ```bash
 cp .env.example .env
 # Set strong SECRET_KEY, POSTGRES_PASSWORD, S3_SECRET_KEY, and CORS_ORIGINS
+# AGENT_BOOTSTRAP_TOKEN is optional (used for auto agent registration)
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 

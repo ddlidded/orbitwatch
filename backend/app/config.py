@@ -1,13 +1,19 @@
+import logging
+import secrets
 from functools import lru_cache
+
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+_DEFAULT_SECRET_KEY = 'change-me-in-production'
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
     orbitwatch_env: str = 'development'
-    secret_key: str = 'change-me-in-production'
+    secret_key: str = _DEFAULT_SECRET_KEY
     cookie_secure: bool = Field(default=False)
     cookie_samesite: str = 'lax'
     cors_origins: str = 'http://localhost:5173,http://localhost:3000,http://localhost,https://localhost'
@@ -35,8 +41,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode='after')
     def _secure_in_production(self):
-        if self.orbitwatch_env == 'production' and 'cookie_secure' not in self.model_fields_set:
-            self.cookie_secure = True
+        if self.orbitwatch_env == 'production':
+            if not self.secret_key or self.secret_key == _DEFAULT_SECRET_KEY:
+                self.secret_key = secrets.token_urlsafe(48)
+                logger.warning(
+                    'SECRET_KEY not configured. A random secret has been generated for this session. '
+                    'Set SECRET_KEY in your environment to persist sessions across restarts.'
+                )
+            if 'cookie_secure' not in self.model_fields_set:
+                self.cookie_secure = True
         return self
 
     @property

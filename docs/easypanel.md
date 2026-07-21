@@ -7,7 +7,7 @@ This guide deploys the full OrbitWatch stack (PostgreSQL, Redis, MinIO, backend,
 - An Easypanel instance (self-hosted or managed)
 - A server with Docker support
 - A domain (or subdomain) to point at the frontend
-- Strong secrets ready for the environment variables
+- (Optional but recommended) strong secrets for `SECRET_KEY` and `AGENT_BOOTSTRAP_TOKEN` if you want them to persist across restarts
 
 ## 2. Prepare the repository
 
@@ -38,13 +38,13 @@ In the Easypanel **Environment** section, set at least these variables:
 | `POSTGRES_USER` | Postgres username | `orbitwatch` |
 | `POSTGRES_PASSWORD` | **Strong** Postgres password | generate one |
 | `POSTGRES_DB` | Postgres database name | `orbitwatch` |
-| `SECRET_KEY` | FastAPI signing/encryption key | generate a 64-char random string |
+| `SECRET_KEY` | FastAPI signing/encryption key (auto-generated if omitted, but set it to persist sessions) | generate a 64-char random string |
 | `CORS_ORIGINS` | Your frontend domain(s), comma-separated | `https://orbitwatch.yourdomain.com` |
 | `S3_ACCESS_KEY` | MinIO root username | `minioadmin` |
 | `S3_SECRET_KEY` | **Strong** MinIO root password | generate one |
 | `S3_BUCKET` | MinIO bucket name | `orbitwatch` |
 | `ORBITWATCH_ADMIN_PASSWORD` | Initial admin password | generate a strong password |
-| `AGENT_BOOTSTRAP_TOKEN` | Pre-shared secret for auto agent registration | generate a 64-char random string |
+| `AGENT_BOOTSTRAP_TOKEN` | Pre-shared secret for auto agent registration (optional; the Connect Instrument page can issue pre-configured tokens) | generate a 64-char random string |
 
 Optional:
 
@@ -118,7 +118,7 @@ When you push changes to the connected Git branch, Easypanel can auto-redeploy i
 
 ## Troubleshooting
 
-- **Backend fails to start:** Check that `SECRET_KEY` and `POSTGRES_PASSWORD` are set. Do not override `DATABASE_URL`; it is built automatically from `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
+- **Backend fails to start:** Check the backend container logs. `SECRET_KEY` is auto-generated if omitted, but set it explicitly to avoid session invalidation on redeploy. Ensure `POSTGRES_PASSWORD` is set. Do not override `DATABASE_URL`; it is built automatically from `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
 - **Frontend shows blank/API errors:** Verify `CORS_ORIGINS` includes your exact domain (`https://` if using HTTPS).
 - **MinIO not accessible:** Ensure `S3_ACCESS_KEY` and `S3_SECRET_KEY` are set and the `minio` healthcheck passes.
 - **Agent cannot connect:** Confirm the agent `BackendUrl` points to the frontend or backend domain without `/api/v1` (the agent appends `/api/v1` internally).
